@@ -1,8 +1,15 @@
 from collections import Counter
 from itertools import combinations
 
-HIGH_CARD, ONE_PAIR, TWO_PAIR, THREE_OF_A_KIND, STRAIGHT, FLUSH, FULL_HOUSE, FOUR_OF_A_KIND, STRAIGHT_FLUSH = range(9)
-
+HIGH_CARD = 0
+PAIR = 1
+TWO_PAIR = 2
+THREE_OF_A_KIND = 3
+STRAIGHT = 4
+FLUSH = 5
+FULL_HOUSE = 6
+FOUR_OF_A_KIND = 7
+STRAIGHT_FLUSH = 8
 # Hand categories are ordered so rank tuples compare by category before tie-breakers.
 def rank_five(cards) -> tuple:
     ranks = sorted((card.rank for card in cards), reverse=True)
