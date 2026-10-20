@@ -2,7 +2,7 @@ import random
 from dataclasses import dataclass
 
 RANKS = "23456789TJQKA"
-SUITS = "CDHS"
+SUITS = "cdhs"
 
 @dataclass(frozen=True)
 class Card:
