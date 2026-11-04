@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>123Poker – Lobby</title>
+<style>
+  :root { --bg:#0f1a14; --panel:#16251c; --line:#27402f; --text:#e8f0ea; --muted:#8fa896; --accent:#e0b94a; --bad:#e26a6a; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.4 system-ui,sans-serif; }
+  main { max-width:760px; margin:0 auto; padding:24px 16px; }
+  header { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
+  h1 { margin:0; }
+  input,button { font:inherit; padding:10px 12px; border-radius:8px; border:1px solid var(--line); background:var(--panel); color:var(--text); }
+  button { cursor:pointer; background:var(--accent); color:#1a1405; border:0; font-weight:600; }
+  button.ghost { background:transparent; color:var(--text); border:1px solid var(--line); }
+  .row { display:flex; gap:12px; align-items:center; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px 16px; margin-top:10px; }
+  .row .name { flex:1; font-weight:600; }
+  .count { font-variant-numeric:tabular-nums; color:var(--muted); min-width:48px; text-align:right; }
+  .tag { font-size:12px; padding:2px 8px; border-radius:99px; border:1px solid var(--line); color:var(--muted); }
+  .empty { color:var(--muted); margin-top:24px; text-align:center; }
+  dialog { background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:12px; padding:20px; width:min(360px,92vw); }
+  dialog::backdrop { background:rgba(0,0,0,.6); }
+  label { display:block; margin:12px 0 4px; color:var(--muted); font-size:14px; }
+  dialog input, dialog select { width:100%; }
+  .err { color:var(--bad); min-height:1.4em; margin:8px 0 0; }
+  .actions { display:flex; gap:8px; justify-content:flex-end; margin-top:12px; }
+  .inline { display:flex; align-items:center; gap:8px; margin-top:12px; }
+  .inline input { width:auto; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>123Poker lobby</h1>
+    <div style="display:flex;gap:8px">
+      <input id="player" placeholder="Your name" maxlength="20" aria-label="Your name">
+      <button id="make">Make table</button>
+    </div>
+  </header>
+  <div id="list"></div>
+  <p class="empty" id="empty" hidden>No tables yet. Make one to get started.</p>
+</main>
+
+<dialog id="makeDlg">
+  <form method="dialog" id="makeForm">
+    <h2 style="margin-top:0">Make table</h2>
+    <label for="tname">Table name</label>
+    <input id="tname" maxlength="30" required>
+    <label for="seats">Seats</label>
+    <select id="seats"></select>
+    <label class="inline"><input type="checkbox" id="priv"> Private (password required)</label>
+    <div id="pwWrap" hidden>
+      <label for="pw">Password</label>
+      <input id="pw" type="password" maxlength="64" autocomplete="new-password">
+    </div>
+    <p class="err" id="makeErr"></p>
+    <div class="actions">
+      <button type="button" class="ghost" id="makeCancel">Cancel</button>
+      <button type="submit">Create</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="joinDlg">
+  <form method="dialog" id="joinForm">
+    <h2 style="margin-top:0" id="joinTitle">Join</h2>
+    <label for="jpw">Password</label>
+    <input id="jpw" type="password" autocomplete="off">
+    <p class="err" id="joinErr"></p>
+    <div class="actions">
+      <button type="button" class="ghost" id="joinCancel">Cancel</button>
+      <button type="submit">Join</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+const $ = id => document.getElementById(id);
+const store = { get(k){ try { return localStorage.getItem(k); } catch { return null; } },
+                set(k,v){ try { localStorage.setItem(k,v); } catch {} } };
+
+$('player').value = store.get('name') || '';
+for (let n = 2; n <= 8; n++) $('seats').add(new Option(n + ' seats', n, n === 8, n === 8));
+
+function playerName() {
+  const n = $('player').value.trim();
+  if (!n) { $('player').focus(); alert('Enter your name first.'); return null; }
+  store.set('name', n);
+  return n;
+}
+
+async function refresh() {
+  try {
+    const tables = await (await fetch('/api/tables')).json();
+    const list = $('list');
+    list.replaceChildren();
+    $('empty').hidden = tables.length > 0;
+    for (const t of tables) {
+      const row = document.createElement('div');
+      row.className = 'row';
+      const name = document.createElement('span'); name.className = 'name'; name.textContent = t.name;
+      const tag = document.createElement('span'); tag.className = 'tag';
+      tag.textContent = (t.private ? '🔒 Private' : 'Public') + (t.in_hand ? ' · in hand' : '');
+      const count = document.createElement('span'); count.className = 'count';
+      count.textContent = t.seated + '/' + t.max_seats;
+      const btn = document.createElement('button');
+      btn.textContent = t.seated >= t.max_seats ? 'Watch' : 'Join';
+      btn.onclick = () => join(t);
+      row.append(name, tag, count, btn);
+      list.append(row);
+    }
+  } catch (e) { /* server briefly unreachable; try again on next tick */ }
+}
+
+async function join(t, password) {
+  const name = playerName(); if (!name) return;
+  if (t.private && password === undefined) {
+    $('joinTitle').textContent = 'Join ' + t.name;
+    $('jpw').value = ''; $('joinErr').textContent = '';
+    $('joinForm').onsubmit = async ev => {
+      ev.preventDefault();
+      const ok = await join(t, $('jpw').value);
+      if (ok) $('joinDlg').close();
+    };
+    $('joinDlg').showModal(); return;
+  }
+  const res = await fetch(`/api/tables/${t.id}/join`, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ name, password: password ?? null }),
+  });
+  if (!res.ok) {
+    const msg = (await res.json()).detail || 'Could not join';
+    if (t.private) { $('joinErr').textContent = msg; } else { alert(msg); }
+    return false;
+  }
+  const { token } = await res.json();
+  location.href = `/table?id=${encodeURIComponent(t.id)}&token=${encodeURIComponent(token)}`;
+  return true;
+}
+
+$('make').onclick = () => { $('makeErr').textContent = ''; $('makeDlg').showModal(); };
+$('makeCancel').onclick = () => $('makeDlg').close();
+$('joinCancel').onclick = () => $('joinDlg').close();
+$('priv').onchange = () => { $('pwWrap').hidden = !$('priv').checked; };
+
+$('makeForm').onsubmit = async ev => {
+  ev.preventDefault();
+  const name = playerName(); if (!name) return;
+  const priv = $('priv').checked;
+  if (priv && !$('pw').value) { $('makeErr').textContent = 'Enter a password for a private table.'; return; }
+  const res = await fetch('/api/tables', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ name: $('tname').value, max_seats: +$('seats').value,
+                           private: priv, password: priv ? $('pw').value : null }),
+  });
+  if (!res.ok) { $('makeErr').textContent = 'Could not create table.'; return; }
+  const { id } = await res.json();
+  $('makeDlg').close();
+  await join({ id, private: priv }, priv ? $('pw').value : undefined);
+};
+
+refresh(); setInterval(refresh, 3000);
+</script>
+</body>
+</html>

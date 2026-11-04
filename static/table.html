@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>123Poker – Table</title>
+<style>
+  :root { --bg:#0f1a14; --panel:#16251c; --line:#27402f; --text:#e8f0ea; --muted:#8fa896; --accent:#e0b94a; --felt:#1d6b3f; --rail:#4a2e1a; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.3 system-ui,sans-serif; }
+  header { display:flex; justify-content:space-between; align-items:center; padding:12px 16px; gap:12px; }
+  a { color:var(--accent); }
+  button { font:inherit; padding:8px 14px; border-radius:8px; border:0; background:var(--accent); color:#1a1405; font-weight:600; cursor:pointer; }
+  button:disabled { opacity:.4; cursor:default; }
+  #wrap { position:relative; width:min(960px,96vw); aspect-ratio:2/1; margin:70px auto 110px; }
+  #felt { position:absolute; inset:0; background:radial-gradient(ellipse at center,#25834d,var(--felt)); border:14px solid var(--rail); border-radius:50%; box-shadow:0 10px 40px rgba(0,0,0,.5) inset; }
+  #center { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); text-align:center; }
+  #board { display:flex; gap:6px; justify-content:center; min-height:64px; }
+  #pot { margin-top:8px; font-weight:600; text-shadow:0 1px 2px #000; }
+  .card { width:42px; height:60px; border-radius:6px; background:#fff; color:#111; display:flex; flex-direction:column; align-items:center; justify-content:center; font-weight:700; font-size:17px; box-shadow:0 2px 4px rgba(0,0,0,.5); }
+  .card.red { color:#c0262d; }
+  .card.back { background:repeating-linear-gradient(45deg,#2a4fa0,#2a4fa0 4px,#1f3d80 4px,#1f3d80 8px); border:2px solid #fff; }
+  .card.ghost { background:rgba(0,0,0,.18); box-shadow:none; }
+  .seat { position:absolute; transform:translate(-50%,-50%); width:120px; text-align:center; }
+  .seat .plate { background:var(--panel); border:2px solid var(--line); border-radius:10px; padding:6px 4px; }
+  .seat.me .plate { border-color:var(--accent); }
+  .seat.turn .plate { box-shadow:0 0 12px var(--accent); }
+  .seat.folded { opacity:.45; }
+  .seat .name { font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .seat .stack { color:var(--muted); font-size:13px; }
+  .cards { display:flex; gap:4px; justify-content:center; margin-bottom:4px; min-height:60px; }
+  .cards .card { width:36px; height:52px; font-size:15px; }
+  .dealer { display:inline-block; background:#fff; color:#111; border-radius:50%; width:20px; height:20px; font-size:12px; line-height:20px; font-weight:700; margin-left:4px; }
+  .bet { font-size:13px; color:var(--accent); min-height:16px; }
+  .empty-seat button { opacity:.85; }
+  #msg { text-align:center; color:var(--muted); min-height:1.4em; }
+  #err { color:#e26a6a; }
+</style>
+</head>
+<body>
+<header>
+  <div><a href="/">&larr; Lobby</a> &nbsp; <strong id="title">Table</strong> <span id="phase" style="color:var(--muted)"></span></div>
+  <div><button id="start" disabled>Deal hand</button> <button id="stand" disabled>Leave seat</button></div>
+</header>
+<div id="wrap">
+  <div id="felt"></div>
+  <div id="center"><div id="board"></div><div id="pot"></div></div>
+</div>
+<p id="msg"></p>
+<p style="text-align:center"><span id="err"></span></p>
+
+
+<script>
+const params = new URLSearchParams(location.search);
+const id = params.get('id'), token = params.get('token');
+const $ = i => document.getElementById(i);
+const SUIT = { c:'♣', d:'♦', h:'♥', s:'♠' };
+let state = null;
+
+function cardEl(code) {
+  const d = document.createElement('div');
+  if (!code) { d.className = 'card back'; return d; }
+  d.className = 'card' + (code[1] === 'h' || code[1] === 'd' ? ' red' : '');
+  const r = code[0] === 'T' ? '10' : code[0];
+  d.append(r, SUIT[code[1]]);
+  return d;
+}
+
+// Place seat i of n around the ellipse, with seat 0 at the bottom centre.
+function seatPos(i, n) {
+  const a = Math.PI / 2 + (2 * Math.PI * i) / n;
+  return [50 + 52 * Math.cos(a), 50 + 58 * Math.sin(a)];
+}
+
+function render() {
+  const s = state; if (!s) return;
+  $('title').textContent = s.name;
+  $('phase').textContent = '· ' + s.phase;
+  const board = $('board'); board.replaceChildren();
+  for (let i = 0; i < 5; i++) {
+    const c = s.board[i] ? cardEl(s.board[i]) : Object.assign(document.createElement('div'), { className:'card ghost' });
+    board.append(c);
+  }
+  $('pot').textContent = s.pot ? 'Pot: ' + s.pot : '';
+  $('wrap').querySelectorAll('.seat').forEach(e => e.remove());
+
+  const n = s.seats.length, seated = s.my_seat !== null;
+  s.seats.forEach((seat, i) => {
+    const el = document.createElement('div');
+    el.className = 'seat';
+    const [x, y] = seatPos(i, n);
+    el.style.left = x + '%'; el.style.top = y + '%';
+    if (!seat) {
+      el.classList.add('empty-seat');
+      const b = document.createElement('button');
+      b.textContent = 'Sit'; b.disabled = seated;
+      b.onclick = () => send({ type:'sit', seat:i });
+      el.append(b);
+    } else {
+      if (seat.me) el.classList.add('me');
+      if (seat.folded && s.phase !== 'waiting') el.classList.add('folded');
+      if (s.to_act === i) el.classList.add('turn');
+      const cards = document.createElement('div'); cards.className = 'cards';
+      // Only your own cards (or everyone's at showdown) arrive from the server;
+      // everyone else is just face-down backs.
+      if (seat.cards) seat.cards.forEach(c => cards.append(cardEl(c)));
+      else for (let k = 0; k < seat.card_count; k++) cards.append(cardEl(null));
+      const plate = document.createElement('div'); plate.className = 'plate';
+      const name = document.createElement('div'); name.className = 'name';
+      name.textContent = seat.name + (seat.me ? ' (you)' : '');
+      if (s.button === i && s.phase !== 'waiting') {
+        const d = document.createElement('span'); d.className = 'dealer'; d.textContent = 'D'; d.title = 'Dealer button'; name.append(d);
+      }
+      const stack = document.createElement('div'); stack.className = 'stack'; stack.textContent = seat.stack;
+      plate.append(name, stack);
+      const bet = document.createElement('div'); bet.className = 'bet'; bet.textContent = seat.bet ? 'Bet ' + seat.bet : '';
+      el.append(cards, plate, bet);
+    }
+    $('wrap').append(el);
+  });
+  const count = s.seats.filter(Boolean).length;
+  $('start').disabled = !(seated && s.phase === 'waiting' && count >= 2);
+  $('stand').disabled = !(seated && s.phase === 'waiting');
+  $('msg').textContent = !seated ? 'Spectating – click Sit to take a seat.' : (s.phase === 'waiting' ? `${count} seated – need 2+ to deal.` : '');
+}
+
+let ws;
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}/ws/${encodeURIComponent(id)}?token=${encodeURIComponent(token)}`);
+  ws.onmessage = ev => {
+    const m = JSON.parse(ev.data);
+    if (m.type === 'state') { state = m; $('err').textContent = ''; render(); }
+    else if (m.type === 'error') $('err').textContent = m.message;
+  };
+  ws.onclose = ev => {
+    if (ev.code === 4403) { $('msg').textContent = 'Invalid or expired link – go back to the lobby.'; return; }
+    $('msg').textContent = 'Disconnected. Retrying…'; setTimeout(connect, 1500);
+  };
+}
+function send(o) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); }
+$('start').onclick = () => send({ type:'start' });
+$('stand').onclick = () => send({ type:'stand' });
+connect();
+</script>
+</body>
+</html>
