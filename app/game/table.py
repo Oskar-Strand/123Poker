@@ -54,6 +54,28 @@ class Table:
         i = self._index_of(player_id)
         self.seats[i] = None
 
+    def abort_hand(self) -> None:
+        """Cancel the running hand: refund every bet and return to WAITING."""
+        if self.phase == Phase.WAITING:
+            raise ValueError("No hand is running")
+        for s in self.seats:
+            if s:
+                s.stack += s.bet
+                s.hole_cards, s.bet, s.acted, s.folded = [], 0, False, False
+        self.board, self.pot, self.current_bet = [], 0, 0
+        self.to_act, self.deck = None, None
+        self.phase = Phase.WAITING
+        # start_hand advances the button, so step it back to replay the same position
+        self.button = self._prev_seat(self.button)
+
+    def _prev_seat(self, start: int) -> int:
+        n = len(self.seats)
+        for step in range(1, n + 1):
+            i = (start - step) % n
+            if self.seats[i]:
+                return i
+        return -1
+
     def start_hand(self) -> None:
         if self.phase != Phase.WAITING:
             raise ValueError("A hand is already running")

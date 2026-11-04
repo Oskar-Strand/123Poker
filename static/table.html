@@ -40,7 +40,7 @@
 <body>
 <header>
   <div><a href="/">&larr; Lobby</a> &nbsp; <strong id="title">Table</strong> <span id="phase" style="color:var(--muted)"></span></div>
-  <div><button id="start" disabled>Deal hand</button> <button id="stand" disabled>Leave seat</button></div>
+  <div><button id="start" disabled>Deal hand</button> <button id="reset" disabled title="Cancel the current hand and refund bets">Reset hand</button> <button id="stand" disabled>Leave seat</button></div>
 </header>
 <div id="wrap">
   <div id="felt"></div>
@@ -120,8 +120,9 @@ function render() {
   });
   const count = s.seats.filter(Boolean).length;
   $('start').disabled = !(seated && s.phase === 'waiting' && count >= 2);
+  $('reset').disabled = !(seated && s.phase !== 'waiting');
   $('stand').disabled = !(seated && s.phase === 'waiting');
-  $('msg').textContent = !seated ? 'Spectating – click Sit to take a seat.' : (s.phase === 'waiting' ? `${count} seated – need 2+ to deal.` : '');
+  $('msg').textContent = !seated ? 'Spectating – click Sit to take a seat.' : (s.phase === 'waiting' ? `${count} seated – need 2+ to deal.` : 'Hand in progress – betting is not built yet. Use Reset hand to start over.');
 }
 
 let ws;
@@ -140,6 +141,7 @@ function connect() {
 }
 function send(o) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); }
 $('start').onclick = () => send({ type:'start' });
+$('reset').onclick = () => send({ type:'reset' });
 $('stand').onclick = () => send({ type:'stand' });
 connect();
 </script>

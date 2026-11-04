@@ -88,5 +88,9 @@ def handle(room: Room, token: str, msg: dict) -> None:
         if room.seat_of(token) is None:
             raise ValueError("Take a seat first")
         t.start_hand()
+    elif kind == "reset":
+        if room.seat_of(token) is None:
+            raise ValueError("Only seated players can reset the hand")
+        t.abort_hand()
     else:
         raise ValueError("Unknown action")

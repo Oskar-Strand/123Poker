@@ -37,3 +37,16 @@ def test_cannot_take_occupied_seat():
     t = make_table(2)
     with pytest.raises(ValueError):
         t.sit("someone", 1000, 0)
+
+def test_abort_hand_refunds_and_allows_leaving():
+    t = make_table(3)
+    t.start_hand()
+    with pytest.raises(ValueError):
+        t.stand("p0")
+    t.abort_hand()
+    assert t.phase == Phase.WAITING
+    assert [s.stack for s in t.seats if s] == [1000, 1000, 1000]
+    t.stand("p0")
+    t.sit("p0", 1000, 0)
+    t.start_hand()
+    assert t.button == 0
