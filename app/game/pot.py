@@ -17,6 +17,11 @@ def build_pots(contributions: dict[str, int], folded: set[str]) -> list[Pot]:
                     if p not in folded and c >= level}
         pots.append(Pot(amount, eligible))
         prev = level
+    # Chips a folded player put in above the highest live contribution
+    # would otherwise vanish; they belong to the last pot.
+    leftover = sum(contributions.values()) - sum(p.amount for p in pots)
+    if leftover and pots:
+        pots[-1].amount += leftover
     return pots
 
 def award(pots: list[Pot], hand_ranks: dict[str, tuple], seat_order: list[str]) -> dict[str, int]:
@@ -25,11 +30,11 @@ def award(pots: list[Pot], hand_ranks: dict[str, tuple], seat_order: list[str]) 
         if len(pot.eligible) == 1:
             winners = list(pot.eligible)
         else:
-            best = max((hand_ranks[p] for p in pot.eligible))
+            best = max(hand_ranks[p] for p in pot.eligible)
             winners = [p for p in seat_order if p in pot.eligible and hand_ranks[p] == best]
-            share, remainder = divmod(pot.amount, len(winners))
-            for w in winners:
-                winnings[w] += share
-            for w in winners[:remainder]:
-                winnings[w] += 1
+        share, remainder = divmod(pot.amount, len(winners))
+        for w in winners:
+            winnings[w] += share
+        for w in winners[:remainder]:
+            winnings[w] += 1
     return dict(winnings)

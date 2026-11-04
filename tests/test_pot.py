@@ -8,7 +8,7 @@ def test_short_all_in_creates_side_pot():
     pots = build_pots({"A": 50, "B": 200, "C": 200}, folded=set())
     assert pots == [
         Pot(amount=150, eligible={"A", "B", "C"}),
-        Pot(amount=300, eligible={"A", "C"})
+        Pot(amount=300, eligible={"B", "C"})
     ]
 
 def test_folded_chips_count_but_not_eligible():
@@ -30,3 +30,8 @@ def test_split_pot_odd_chip_goes_left_of_button():
 def test_everyone_folds_no_ranks_needed():
     pots = build_pots({"A": 10, "B": 5}, folded={"B"})
     assert award(pots, {}, ["A", "B"]) == {"A": 15}
+
+
+def test_folded_overbet_is_not_lost():
+    pots = build_pots({"A": 50, "B": 100, "C": 200}, folded={"C"})
+    assert sum(p.amount for p in pots) == 350
